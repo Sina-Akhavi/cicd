@@ -19,36 +19,37 @@ jobs:
 
     # مراحل اجرایی
     steps:
-      # 1. گرفتن کد از ریپازیتوری
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. نصب Node.js برای اجرای تست‌ها
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      # 3. نصب وابستگی‌های پروژه
       - name: Install dependencies
         run: npm install
 
-      # 4. اجرای تست‌ها
       - name: Run tests
         run: npm test
 
-      # 5. لاگین به رجیستری کانتینر گیت‌هاب (GHCR)
-      - name: Log in to the Container registry
+      - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }} # نام کاربری گیت‌هاب شما
-          password: ${{ secrets.GITHUB_TOKEN }} # توکن خودکار توسط گیت‌هاب
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      # --- NEW STEP ADDED HERE ---
+      - name: Convert repository name to lowercase
+        id: string
+        run: echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+      # --- END OF NEW STEP ---
 
-      # 6. ساخت و پوش کردن ایمیج داکر
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          # --- THIS LINE IS MODIFIED ---
+          tags: ghcr.io/${{ steps.string.outputs.repo_lc }}:${{ github.sha }}
