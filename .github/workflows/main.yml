@@ -1,28 +1,24 @@
-# نام Workflow که در تب Actions نمایش داده می‌شود
-name: CI/CD Pipeline
+name: Node.js CI/CD
 
-# تعریف تریگر: چه زمانی این پایپ‌لاین اجرا شود؟
 on:
   push:
-    branches: [ "main" ] # هر بار که کدی به شاخه main پوش شود
+    branches: [ "main" ]
 
-# تعریف کارها (Jobs) که باید انجام شوند
 jobs:
-  build-and-push:
-    # سیستم‌عاملی که پایپ‌لاین روی آن اجرا می‌شود
+  build-and-push: # Renamed for clarity
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-
-    # دادن دسترسی لازم برای پوش کردن ایمیج به GHCR
     permissions:
       contents: read
       packages: write
+    outputs: # <-- NEW: Define outputs for this job
+      image_name: ${{ steps.set-image-name.outputs.image_name }}
 
-    # مراحل اجرایی
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -37,19 +33,55 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      # --- NEW STEP ADDED HERE ---
+
       - name: Convert repository name to lowercase
         id: string
         run: echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
-      # --- END OF NEW STEP ---
+      
+      - name: Set image name output # <-- NEW: Step to create the output variable
+        id: set-image-name
+        run: echo "image_name=ghcr.io/${{ steps.string.outputs.repo_lc }}:${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          # --- THIS LINE IS MODIFIED ---
-          tags: ghcr.io/${{ steps.string.outputs.repo_lc }}:${{ github.sha }}
+          tags: ${{ steps.set-image-name.outputs.image_name }} # Use the variable
+
+  deploy-and-test: # <-- NEW: This is our second job
+    name: Deploy to Runner and Run Integration Test
+    runs-on: ubuntu-latest
+    needs: build-and-push # <-- NEW: This job depends on the one above
+    permissions:
+      packages: read # Only needs read permission to pull the image
+
+    steps:
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image from GHCR
+        run: docker pull ${{ needs.build-and-push.outputs.image_name }} # <-- NEW: Using the output from the previous job
+
+      - name: Run the container
+        run: docker run -d -p 8080:3000 --name my-app ${{ needs.build-and-push.outputs.image_name }}
+
+      - name: Wait for container to start
+        run: sleep 5 # Give the app a few seconds to initialize
+
+      - name: Perform integration test
+        run: |
+          response=$(curl -s http://localhost:8080)
+          if [ "$response" = "Hello World!" ]; then
+            echo "✅ Integration test PASSED: Received '$response'"
+            exit 0
+          else
+            echo "❌ Integration test FAILED: Received '$response'"
+            exit 1
+          fi
