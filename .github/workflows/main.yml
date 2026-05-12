@@ -78,7 +78,7 @@ jobs:
       - name: Perform integration test
         run: |
           response=$(curl -s http://localhost:8080)
-          if [ "$response" = "Hello World!" ]; then
+          if [ "$response" = "Hello, CI/CD with Docker!" ]; then
             echo "✅ Integration test PASSED: Received '$response'"
             exit 0
           else
