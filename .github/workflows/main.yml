@@ -1,0 +1,54 @@
+# نام Workflow که در تب Actions نمایش داده می‌شود
+name: CI/CD Pipeline
+
+# تعریف تریگر: چه زمانی این پایپ‌لاین اجرا شود؟
+on:
+  push:
+    branches: [ "main" ] # هر بار که کدی به شاخه main پوش شود
+
+# تعریف کارها (Jobs) که باید انجام شوند
+jobs:
+  build-and-push:
+    # سیستم‌عاملی که پایپ‌لاین روی آن اجرا می‌شود
+    runs-on: ubuntu-latest
+
+    # دادن دسترسی لازم برای پوش کردن ایمیج به GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    # مراحل اجرایی
+    steps:
+      # 1. گرفتن کد از ریپازیتوری
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. نصب Node.js برای اجرای تست‌ها
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # 3. نصب وابستگی‌های پروژه
+      - name: Install dependencies
+        run: npm install
+
+      # 4. اجرای تست‌ها
+      - name: Run tests
+        run: npm test
+
+      # 5. لاگین به رجیستری کانتینر گیت‌هاب (GHCR)
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }} # نام کاربری گیت‌هاب شما
+          password: ${{ secrets.GITHUB_TOKEN }} # توکن خودکار توسط گیت‌هاب
+
+      # 6. ساخت و پوش کردن ایمیج داکر
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
